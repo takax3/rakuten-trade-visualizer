@@ -1,6 +1,7 @@
 FROM ghcr.io/astral-sh/uv:python3.12-bookworm-slim
 
 WORKDIR /app
+ENV TRADE_VISUALIZER_DB_PATH=/app/data/trades.db
 
 COPY pyproject.toml uv.lock README.md ./
 RUN uv sync --frozen --no-dev
