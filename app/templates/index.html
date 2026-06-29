@@ -13,6 +13,7 @@
           <h1>楽天証券 約定タイミング可視化</h1>
           <p>注文CSVと1分足を重ねて、信用売買の入退出を見直します。</p>
         </div>
+        <a class="nav-link" href="/reviews">保存済み振り返り</a>
       </header>
 
       <section class="panel">
@@ -20,23 +21,6 @@
           <label class="field">
             <span>楽天注文CSV</span>
             <input type="file" name="orders_csv" accept=".csv" required>
-          </label>
-
-          <fieldset class="field radios">
-            <legend>1分足データ</legend>
-            <label>
-              <input type="radio" name="bar_source" value="yahoo" {% if bar_source != "csv" %}checked{% endif %}>
-              Yahoo Financeから取得
-            </label>
-            <label>
-              <input type="radio" name="bar_source" value="csv" {% if bar_source == "csv" %}checked{% endif %}>
-              1分足CSVをアップロード
-            </label>
-          </fieldset>
-
-          <label class="field">
-            <span>1分足CSV</span>
-            <input type="file" name="minute_csv" accept=".csv">
           </label>
 
           <button type="submit">表示する</button>
@@ -83,6 +67,19 @@
       {% if chart_html %}
         <section class="chart">
           {{ chart_html | safe }}
+        </section>
+      {% endif %}
+
+      {% if saved_trade %}
+        <section class="panel">
+          <div class="section-heading">
+            <h2>その日の振り返り</h2>
+            <a class="secondary-link" href="/reviews/{{ saved_trade.id }}">保存済みページを開く</a>
+          </div>
+          <form action="/reviews/{{ saved_trade.id }}/note" method="post" class="review-form">
+            <textarea name="review_note" rows="6">{{ saved_trade.review_note }}</textarea>
+            <button type="submit">振り返りを保存</button>
+          </form>
         </section>
       {% endif %}
 

@@ -6,7 +6,7 @@ from datetime import datetime
 
 import pandas as pd
 
-from app.models import MinuteBar, OrderExecution, TradeSide
+from app.models import OrderExecution, TradeSide
 
 RAKUTEN_REQUIRED_COLUMNS = {
     "注文番号",
@@ -21,7 +21,6 @@ RAKUTEN_REQUIRED_COLUMNS = {
     "約定単価[円]",
 }
 
-MINUTE_BAR_REQUIRED_COLUMNS = {"datetime", "open", "high", "low", "close"}
 VALID_SIDES: set[str] = {"買建", "売建", "買埋", "売埋"}
 
 
@@ -103,36 +102,3 @@ def yahoo_ticker_from_symbol_code_market(symbol_code_market: str) -> str:
     if not match:
         raise ValueError(f"銘柄コードを解析できません: {symbol_code_market}")
     return f"{match.group(1)}.T"
-
-
-def parse_minute_bars_csv(data: bytes) -> list[MinuteBar]:
-    df = read_csv_text(data)
-    normalized_columns = {column.strip().lower(): column for column in df.columns}
-    missing = sorted(MINUTE_BAR_REQUIRED_COLUMNS - set(normalized_columns))
-    if missing:
-        raise ValueError(f"1分足CSVの必須列が不足しています: {', '.join(missing)}")
-
-    bars: list[MinuteBar] = []
-    for _, row in df.iterrows():
-        volume = None
-        if "volume" in normalized_columns and str(row[normalized_columns["volume"]]).strip() not in {"", "-"}:
-            volume = parse_number(row[normalized_columns["volume"]])
-
-        bars.append(
-            MinuteBar(
-                datetime=parse_minute_datetime(str(row[normalized_columns["datetime"]]).strip()),
-                open=parse_number(row[normalized_columns["open"]]),
-                high=parse_number(row[normalized_columns["high"]]),
-                low=parse_number(row[normalized_columns["low"]]),
-                close=parse_number(row[normalized_columns["close"]]),
-                volume=volume,
-            )
-        )
-    return sorted(bars, key=lambda bar: bar.datetime)
-
-
-def parse_minute_datetime(value: str) -> datetime:
-    parsed = pd.to_datetime(value, errors="raise")
-    if parsed.tzinfo is not None:
-        parsed = parsed.tz_convert("Asia/Tokyo").tz_localize(None)
-    return parsed.to_pydatetime()

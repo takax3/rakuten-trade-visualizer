@@ -18,15 +18,10 @@ docker build -t rakuten-trade-visualizer .
 docker run --rm -p 8000:8000 rakuten-trade-visualizer
 ```
 
-## CSV inputs
+## CSV input
 
 注文CSVは楽天証券の注文照会CSV形式を想定しています。`状況` が `約定` で、`約定数量[株/口]` が 0 より大きい行だけを表示します。
 
-1分足CSVを使う場合は以下の列が必要です。
+1分足は `yfinance` を利用してYahoo Financeから取得します。1分足は取得可能期間に制約があります。
 
-```csv
-datetime,open,high,low,close,volume
-2026-06-26 09:00,6100,6110,6098,6105,12000
-```
-
-Yahoo Finance取得は `yfinance` を利用します。1分足は取得可能期間に制約があり、取得できない場合は1分足CSVをアップロードしてください。
+可視化に成功した注文CSVと取得済み1分足はローカルSQLite DBに自動保存され、保存済み振り返り画面から後で読み込めます。

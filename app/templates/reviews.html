@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>保存済み振り返り - 楽天証券 約定タイミング可視化</title>
+    <link rel="stylesheet" href="/static/styles.css">
+  </head>
+  <body>
+    <main class="shell">
+      <header class="topbar">
+        <div>
+          <h1>保存済み振り返り</h1>
+          <p>保存した注文データと1分足を読み込み、過去の取引を見直します。</p>
+        </div>
+        <a class="nav-link" href="/">新しく表示する</a>
+      </header>
+
+      <section class="panel">
+        {% if saved_trades %}
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>対象日</th>
+                  <th>銘柄</th>
+                  <th>Yahoo ticker</th>
+                  <th>最終損益</th>
+                  <th>振り返り</th>
+                  <th>更新日時</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for trade in saved_trades %}
+                  <tr>
+                    <td>{{ trade.trade.target_date }}</td>
+                    <td>{{ trade.trade.symbol_name }}</td>
+                    <td>{{ trade.trade.ticker }}</td>
+                    <td>
+                      <span class="pnl {% if trade.final_pnl > 0 %}pnl-positive{% elif trade.final_pnl < 0 %}pnl-negative{% else %}pnl-zero{% endif %}">
+                        {{ "{:+,.0f}円".format(trade.final_pnl) }}
+                      </span>
+                    </td>
+                    <td>{% if trade.trade.review_note %}記入済み{% else %}-{% endif %}</td>
+                    <td>{{ trade.trade.updated_at.strftime("%Y-%m-%d %H:%M") }}</td>
+                    <td><a class="secondary-link" href="/reviews/{{ trade.trade.id }}">開く</a></td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        {% else %}
+          <p class="empty-state">保存済みの振り返りはまだありません。</p>
+        {% endif %}
+      </section>
+    </main>
+  </body>
+</html>

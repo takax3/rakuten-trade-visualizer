@@ -12,7 +12,7 @@ from app.models import MinuteBar
 def fetch_yahoo_minute_bars(ticker: str, target_date: date) -> list[MinuteBar]:
     today_jst = datetime.now(ZoneInfo("Asia/Tokyo")).date()
     if target_date < today_jst - timedelta(days=60):
-        raise ValueError("Yahoo Financeの1分足は直近60日を超える日付を取得できません。1分足CSVをアップロードしてください。")
+        raise ValueError("Yahoo Financeの1分足は直近60日を超える日付を取得できません。")
     if target_date > today_jst:
         raise ValueError("未来日の1分足は取得できません。対象日の注文CSVを確認してください。")
 
@@ -27,7 +27,7 @@ def fetch_yahoo_minute_bars(ticker: str, target_date: date) -> list[MinuteBar]:
         threads=False,
     )
     if df is None or df.empty:
-        raise ValueError("Yahoo Financeから1分足を取得できませんでした。1分足CSVをアップロードしてください。")
+        raise ValueError("Yahoo Financeから1分足を取得できませんでした。")
 
     if isinstance(df.columns, pd.MultiIndex):
         df.columns = df.columns.get_level_values(0)
@@ -40,7 +40,7 @@ def fetch_yahoo_minute_bars(ticker: str, target_date: date) -> list[MinuteBar]:
     df.index = index
     df = df[df.index.date == target_date]
     if df.empty:
-        raise ValueError("取得した1分足に対象日のデータがありません。1分足CSVをアップロードしてください。")
+        raise ValueError("取得した1分足に対象日のデータがありません。")
 
     bars: list[MinuteBar] = []
     for timestamp, row in df.iterrows():

@@ -2,10 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-import pytest
-
 from app.parsers import (
-    parse_minute_bars_csv,
     parse_number,
     parse_rakuten_orders,
     yahoo_ticker_from_symbol_code_market,
@@ -37,17 +34,3 @@ def test_parse_number_accepts_comma_values() -> None:
 
 def test_yahoo_ticker_from_rakuten_symbol() -> None:
     assert yahoo_ticker_from_symbol_code_market("5803 東証(SOR)") == "5803.T"
-
-
-def test_parse_minute_bars_csv() -> None:
-    csv = "datetime,open,high,low,close,volume\n2026-06-26 09:00,6100,6110,6098,6105,12000\n"
-    bars = parse_minute_bars_csv(csv.encode("utf-8"))
-
-    assert len(bars) == 1
-    assert bars[0].datetime == datetime(2026, 6, 26, 9, 0)
-    assert bars[0].close == 6105
-
-
-def test_parse_minute_bars_reports_missing_columns() -> None:
-    with pytest.raises(ValueError, match="high"):
-        parse_minute_bars_csv("datetime,open,low,close\n2026-06-26 09:00,1,1,1\n".encode("utf-8"))

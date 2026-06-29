@@ -20,6 +20,10 @@ body {
 }
 
 .topbar {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
   margin-bottom: 20px;
 }
 
@@ -51,7 +55,7 @@ p {
 
 .upload-form {
   display: grid;
-  grid-template-columns: minmax(220px, 1fr) minmax(260px, 1fr) minmax(220px, 1fr) auto;
+  grid-template-columns: minmax(260px, 1fr) auto;
   gap: 16px;
   align-items: end;
 }
@@ -98,6 +102,28 @@ button {
 
 button:hover {
   background: #111827;
+}
+
+.nav-link,
+.secondary-link {
+  color: #1f2937;
+  font-size: 14px;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.nav-link {
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  background: #ffffff;
+  padding: 9px 12px;
+  white-space: nowrap;
+}
+
+.nav-link:hover,
+.secondary-link:hover {
+  background: #f8fafc;
+  text-decoration: underline;
 }
 
 .secondary-button {
@@ -151,6 +177,25 @@ button:hover {
 
 .table-wrap {
   overflow-x: auto;
+}
+
+.review-form {
+  display: grid;
+  gap: 12px;
+}
+
+.review-form textarea {
+  width: 100%;
+  resize: vertical;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  padding: 10px;
+  font: inherit;
+  line-height: 1.6;
+}
+
+.review-form button {
+  justify-self: start;
 }
 
 .section-heading {
@@ -226,7 +271,21 @@ th {
   color: #475569;
 }
 
+.empty-state {
+  color: #64748b;
+  margin: 0;
+}
+
 @media (max-width: 900px) {
+  .topbar {
+    display: block;
+  }
+
+  .nav-link {
+    display: inline-block;
+    margin-top: 14px;
+  }
+
   .upload-form,
   .summary {
     grid-template-columns: 1fr;
