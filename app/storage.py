@@ -9,7 +9,7 @@ from datetime import date, datetime
 from pathlib import Path
 from typing import Any
 
-from app.models import MinuteBar
+from app.models import MinuteBar, PositionState
 
 
 DEFAULT_DB_PATH = Path("data/trades.db")
@@ -25,6 +25,8 @@ class SavedTrade:
     bars_count: int
     orders_csv: str
     minute_bars: list[MinuteBar]
+    opening_position: PositionState
+    final_position: PositionState
     review_note: str
     created_at: datetime
     updated_at: datetime
@@ -62,12 +64,41 @@ def init_db() -> None:
                 bars_count INTEGER NOT NULL,
                 orders_csv TEXT NOT NULL,
                 minute_bars_json TEXT NOT NULL,
+                opening_long_quantity INTEGER NOT NULL DEFAULT 0,
+                opening_long_average_price REAL NOT NULL DEFAULT 0,
+                opening_short_quantity INTEGER NOT NULL DEFAULT 0,
+                opening_short_average_price REAL NOT NULL DEFAULT 0,
+                final_long_quantity INTEGER NOT NULL DEFAULT 0,
+                final_long_average_price REAL NOT NULL DEFAULT 0,
+                final_short_quantity INTEGER NOT NULL DEFAULT 0,
+                final_short_average_price REAL NOT NULL DEFAULT 0,
                 review_note TEXT NOT NULL DEFAULT '',
                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL
             )
             """
         )
+        existing_columns = {
+            row[1]
+            for row in connection.execute("PRAGMA table_info(saved_trades)").fetchall()
+        }
+        for column_name, column_type in POSITION_COLUMNS.items():
+            if column_name not in existing_columns:
+                connection.execute(
+                    f"ALTER TABLE saved_trades ADD COLUMN {column_name} {column_type} NOT NULL DEFAULT 0"
+                )
+
+
+POSITION_COLUMNS = {
+    "opening_long_quantity": "INTEGER",
+    "opening_long_average_price": "REAL",
+    "opening_short_quantity": "INTEGER",
+    "opening_short_average_price": "REAL",
+    "final_long_quantity": "INTEGER",
+    "final_long_average_price": "REAL",
+    "final_short_quantity": "INTEGER",
+    "final_short_average_price": "REAL",
+}
 
 
 def save_trade(
@@ -77,8 +108,12 @@ def save_trade(
     symbol_name: str,
     ticker: str,
     target_date: date,
+    opening_position: PositionState | None = None,
+    final_position: PositionState | None = None,
 ) -> SavedTrade:
     init_db()
+    opening_position = opening_position or PositionState()
+    final_position = final_position or opening_position
     minute_bars_json = serialize_minute_bars(bars)
     content_hash = build_content_hash(orders_csv, minute_bars_json)
     now = datetime.now().replace(microsecond=0).isoformat()
@@ -94,9 +129,14 @@ def save_trade(
                 """
                 INSERT INTO saved_trades (
                     content_hash, symbol_name, ticker, target_date, bars_count,
-                    orders_csv, minute_bars_json, created_at, updated_at
+                    orders_csv, minute_bars_json,
+                    opening_long_quantity, opening_long_average_price,
+                    opening_short_quantity, opening_short_average_price,
+                    final_long_quantity, final_long_average_price,
+                    final_short_quantity, final_short_average_price,
+                    created_at, updated_at
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     content_hash,
@@ -106,6 +146,14 @@ def save_trade(
                     len(bars),
                     orders_csv,
                     minute_bars_json,
+                    opening_position.long_quantity,
+                    opening_position.long_average_price,
+                    opening_position.short_quantity,
+                    opening_position.short_average_price,
+                    final_position.long_quantity,
+                    final_position.long_average_price,
+                    final_position.short_quantity,
+                    final_position.short_average_price,
                     now,
                     now,
                 ),
@@ -117,7 +165,12 @@ def save_trade(
                 """
                 UPDATE saved_trades
                 SET symbol_name = ?, ticker = ?, target_date = ?, bars_count = ?,
-                    orders_csv = ?, minute_bars_json = ?, updated_at = ?
+                    orders_csv = ?, minute_bars_json = ?,
+                    opening_long_quantity = ?, opening_long_average_price = ?,
+                    opening_short_quantity = ?, opening_short_average_price = ?,
+                    final_long_quantity = ?, final_long_average_price = ?,
+                    final_short_quantity = ?, final_short_average_price = ?,
+                    updated_at = ?
                 WHERE id = ?
                 """,
                 (
@@ -127,6 +180,14 @@ def save_trade(
                     len(bars),
                     orders_csv,
                     minute_bars_json,
+                    opening_position.long_quantity,
+                    opening_position.long_average_price,
+                    opening_position.short_quantity,
+                    opening_position.short_average_price,
+                    final_position.long_quantity,
+                    final_position.long_average_price,
+                    final_position.short_quantity,
+                    final_position.short_average_price,
                     now,
                     trade_id,
                 ),
@@ -152,6 +213,23 @@ def list_saved_trades() -> list[SavedTradeSummary]:
     return [summary_from_row(row) for row in rows]
 
 
+def get_latest_saved_trade_before(ticker: str, target_date: date) -> SavedTrade | None:
+    init_db()
+    with sqlite3.connect(get_db_path()) as connection:
+        connection.row_factory = sqlite3.Row
+        row = connection.execute(
+            """
+            SELECT *
+            FROM saved_trades
+            WHERE ticker = ? AND target_date < ?
+            ORDER BY target_date DESC, updated_at DESC, id DESC
+            LIMIT 1
+            """,
+            (ticker, target_date.isoformat()),
+        ).fetchone()
+    return trade_from_row(row) if row is not None else None
+
+
 def get_saved_trade(trade_id: int) -> SavedTrade | None:
     init_db()
     with sqlite3.connect(get_db_path()) as connection:
@@ -170,6 +248,40 @@ def update_review_note(trade_id: int, review_note: str) -> None:
         connection.execute(
             "UPDATE saved_trades SET review_note = ?, updated_at = ? WHERE id = ?",
             (review_note, now, trade_id),
+        )
+
+
+def update_trade_positions(
+    trade_id: int,
+    *,
+    opening_position: PositionState,
+    final_position: PositionState,
+) -> None:
+    init_db()
+    now = datetime.now().replace(microsecond=0).isoformat()
+    with sqlite3.connect(get_db_path()) as connection:
+        connection.execute(
+            """
+            UPDATE saved_trades
+            SET opening_long_quantity = ?, opening_long_average_price = ?,
+                opening_short_quantity = ?, opening_short_average_price = ?,
+                final_long_quantity = ?, final_long_average_price = ?,
+                final_short_quantity = ?, final_short_average_price = ?,
+                updated_at = ?
+            WHERE id = ?
+            """,
+            (
+                opening_position.long_quantity,
+                opening_position.long_average_price,
+                opening_position.short_quantity,
+                opening_position.short_average_price,
+                final_position.long_quantity,
+                final_position.long_average_price,
+                final_position.short_quantity,
+                final_position.short_average_price,
+                now,
+                trade_id,
+            ),
         )
 
 
@@ -221,6 +333,18 @@ def trade_from_row(row: sqlite3.Row) -> SavedTrade:
         bars_count=int(row["bars_count"]),
         orders_csv=str(row["orders_csv"]),
         minute_bars=deserialize_minute_bars(str(row["minute_bars_json"])),
+        opening_position=PositionState(
+            long_quantity=int(row["opening_long_quantity"]),
+            long_average_price=float(row["opening_long_average_price"]),
+            short_quantity=int(row["opening_short_quantity"]),
+            short_average_price=float(row["opening_short_average_price"]),
+        ),
+        final_position=PositionState(
+            long_quantity=int(row["final_long_quantity"]),
+            long_average_price=float(row["final_long_average_price"]),
+            short_quantity=int(row["final_short_quantity"]),
+            short_average_price=float(row["final_short_average_price"]),
+        ),
         review_note=str(row["review_note"]),
         created_at=datetime.fromisoformat(str(row["created_at"])),
         updated_at=datetime.fromisoformat(str(row["updated_at"])),

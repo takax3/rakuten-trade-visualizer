@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import io
 import re
+from dataclasses import dataclass
+from datetime import date
 from datetime import datetime
 
 import pandas as pd
@@ -22,6 +24,15 @@ RAKUTEN_REQUIRED_COLUMNS = {
 }
 
 VALID_SIDES: set[str] = {"買建", "売建", "買埋", "売埋"}
+
+
+@dataclass(frozen=True)
+class OrderCsvGroup:
+    symbol_name: str
+    symbol_code_market: str
+    target_date: date
+    orders_csv: str
+    executions: list[OrderExecution]
 
 
 def decode_csv_bytes(data: bytes) -> str:
@@ -86,6 +97,62 @@ def parse_rakuten_orders(data: bytes) -> list[OrderExecution]:
         )
 
     return sorted(executions, key=lambda execution: execution.executed_at)
+
+
+def group_rakuten_order_csv(data: bytes) -> list[OrderCsvGroup]:
+    df = read_csv_text(data)
+    missing = sorted(RAKUTEN_REQUIRED_COLUMNS - set(df.columns))
+    if missing:
+        raise ValueError(f"楽天注文CSVの必須列が不足しています: {', '.join(missing)}")
+
+    group_rows: dict[tuple[str, date], list[int]] = {}
+    group_executions: dict[tuple[str, date], list[OrderExecution]] = {}
+
+    for index, row in df.iterrows():
+        if str(row["状況"]).strip() != "約定":
+            continue
+        side = str(row["売買"]).strip()
+        if side not in VALID_SIDES:
+            continue
+
+        quantity = parse_int(row["約定数量[株/口]"])
+        if quantity <= 0:
+            continue
+
+        executed_at = parse_execution_datetime(
+            str(row["注文期限"]).strip(),
+            str(row["注文日時"]).strip(),
+        )
+        symbol_code_market = str(row["銘柄コード・市場"]).strip()
+        key = (symbol_code_market, executed_at.date())
+        execution = OrderExecution(
+            order_id=str(row["注文番号"]).strip(),
+            symbol_name=str(row["銘柄"]).strip(),
+            symbol_code_market=symbol_code_market,
+            trade_type=str(row["取引"]).strip(),
+            side=side,  # type: ignore[arg-type]
+            executed_at=executed_at,
+            quantity=quantity,
+            price=parse_number(row["約定単価[円]"]),
+        )
+        group_rows.setdefault(key, []).append(int(index))
+        group_executions.setdefault(key, []).append(execution)
+
+    groups: list[OrderCsvGroup] = []
+    for key in sorted(group_rows, key=lambda item: (item[1], item[0])):
+        row_indexes = group_rows[key]
+        executions = sorted(group_executions[key], key=lambda execution: execution.executed_at)
+        group_df = df.loc[row_indexes]
+        groups.append(
+            OrderCsvGroup(
+                symbol_name=executions[0].symbol_name,
+                symbol_code_market=executions[0].symbol_code_market,
+                target_date=key[1],
+                orders_csv=group_df.to_csv(index=False, lineterminator="\n"),
+                executions=executions,
+            )
+        )
+    return groups
 
 
 def parse_execution_datetime(order_deadline: str, order_datetime: str) -> datetime:

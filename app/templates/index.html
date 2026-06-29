@@ -45,22 +45,64 @@
 
       {% if ticker or target_date or symbol_name %}
         <section class="summary">
-          <div>
-            <span>銘柄</span>
-            <strong>{{ symbol_name or "-" }}</strong>
+          <div class="summary-row summary-row-meta">
+            <div>
+              <span>銘柄</span>
+              <strong>{{ symbol_name or "-" }}</strong>
+            </div>
+            <div>
+              <span>Yahoo ticker</span>
+              <strong>{{ ticker or "-" }}</strong>
+            </div>
+            <div>
+              <span>対象日</span>
+              <strong>{{ target_date or "-" }}</strong>
+            </div>
+            <div class="summary-placeholder" aria-hidden="true"></div>
           </div>
-          <div>
-            <span>Yahoo ticker</span>
-            <strong>{{ ticker or "-" }}</strong>
-          </div>
-          <div>
-            <span>対象日</span>
-            <strong>{{ target_date or "-" }}</strong>
-          </div>
-          <div>
-            <span>1分足</span>
-            <strong>{{ bars_count or 0 }}本</strong>
-          </div>
+          {% if ohlc_summary %}
+            <div class="summary-row summary-row-ohlc">
+              <div>
+                <span>始値</span>
+                <strong>{{ "{:,.1f}".format(ohlc_summary.open_price) }}</strong>
+              </div>
+              <div>
+                <span>終値</span>
+                <strong>{{ "{:,.1f}".format(ohlc_summary.close_price) }}</strong>
+              </div>
+              <div>
+                <span>最高値</span>
+                <strong>{{ "{:,.1f}".format(ohlc_summary.high_price) }}</strong>
+              </div>
+              <div>
+                <span>最安値</span>
+                <strong>{{ "{:,.1f}".format(ohlc_summary.low_price) }}</strong>
+              </div>
+            </div>
+          {% endif %}
+          {% if pnl_summary %}
+            <div class="summary-row summary-row-pnl">
+              <div>
+                <span>取引損益</span>
+                <strong class="pnl {% if pnl_summary.realized_pnl > 0 %}pnl-positive{% elif pnl_summary.realized_pnl < 0 %}pnl-negative{% else %}pnl-zero{% endif %}">
+                  {{ "{:+,.0f}円".format(pnl_summary.realized_pnl) }}
+                </strong>
+              </div>
+              <div>
+                <span>評価損益</span>
+                <strong class="pnl {% if pnl_summary.unrealized_pnl > 0 %}pnl-positive{% elif pnl_summary.unrealized_pnl < 0 %}pnl-negative{% else %}pnl-zero{% endif %}">
+                  {{ "{:+,.0f}円".format(pnl_summary.unrealized_pnl) }}
+                </strong>
+              </div>
+              <div>
+                <span>合計損益</span>
+                <strong class="pnl {% if pnl_summary.total_pnl > 0 %}pnl-positive{% elif pnl_summary.total_pnl < 0 %}pnl-negative{% else %}pnl-zero{% endif %}">
+                  {{ "{:+,.0f}円".format(pnl_summary.total_pnl) }}
+                </strong>
+              </div>
+              <div class="summary-placeholder" aria-hidden="true"></div>
+            </div>
+          {% endif %}
         </section>
       {% endif %}
 
@@ -92,41 +134,78 @@
             </button>
           </div>
           <div class="table-wrap">
-            <table id="executions-table">
-              <thead>
-                <tr>
-                  <th>時刻</th>
-                  <th>注文番号</th>
-                  <th>取引</th>
-                  <th>売買</th>
-                  <th>数量</th>
-                  <th>約定単価</th>
-                  <th>損益</th>
-                </tr>
-              </thead>
-              <tbody>
-                {% for row in execution_rows %}
-                  {% set execution = row.execution %}
+            <form action="/reviews/{{ saved_trade.id }}/position" method="post" class="position-form">
+              <table id="executions-table">
+                <thead>
                   <tr>
-                    <td>{{ execution.executed_at.strftime("%H:%M:%S") }}</td>
-                    <td>{{ execution.order_id }}</td>
-                    <td>{{ execution.trade_type }}</td>
-                    <td><span class="side side-{{ execution.side }}">{{ execution.side }}</span></td>
-                    <td>{{ "{:,}".format(execution.quantity) }}</td>
-                    <td>{{ "{:,.1f}".format(execution.price) }}</td>
+                    <th>区分</th>
+                    <th>注文番号</th>
+                    <th>取引</th>
+                    <th>売買</th>
+                    <th>数量</th>
+                    <th>約定単価</th>
+                    <th>買建数量</th>
+                    <th>買建平均</th>
+                    <th>売建数量</th>
+                    <th>売建平均</th>
+                    <th>損益</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td>開始</td>
+                    <td>-</td>
+                    <td>-</td>
+                    <td>-</td>
+                    <td>-</td>
+                    <td>-</td>
                     <td>
-                      {% if row.realized_pnl is none %}
-                        -
+                      <input class="number-input" type="number" min="0" step="1" name="opening_long_quantity" value="{{ opening_position.long_quantity }}">
+                    </td>
+                    <td>
+                      <input class="number-input" type="number" min="0" step="0.1" name="opening_long_average_price" value="{{ '%.1f'|format(opening_position.long_average_price) }}">
+                    </td>
+                    <td>
+                      <input class="number-input" type="number" min="0" step="1" name="opening_short_quantity" value="{{ opening_position.short_quantity }}">
+                    </td>
+                    <td>
+                      <input class="number-input" type="number" min="0" step="0.1" name="opening_short_average_price" value="{{ '%.1f'|format(opening_position.short_average_price) }}">
+                    </td>
+                    <td>
+                      {% if saved_trade %}
+                        <button type="submit" class="table-button">保存</button>
                       {% else %}
-                        <span class="pnl {% if row.realized_pnl > 0 %}pnl-positive{% elif row.realized_pnl < 0 %}pnl-negative{% else %}pnl-zero{% endif %}">
-                          {{ "{:+,.0f}円".format(row.realized_pnl) }}
-                        </span>
+                        -
                       {% endif %}
                     </td>
                   </tr>
-                {% endfor %}
-              </tbody>
-            </table>
+                  {% for row in execution_rows %}
+                    {% set execution = row.execution %}
+                    <tr>
+                      <td>{{ execution.executed_at.strftime("%H:%M:%S") }}</td>
+                      <td>{{ execution.order_id }}</td>
+                      <td>{{ execution.trade_type }}</td>
+                      <td><span class="side side-{{ execution.side }}">{{ execution.side }}</span></td>
+                      <td>{{ "{:,}".format(execution.quantity) }}</td>
+                      <td>{{ "{:,.1f}".format(execution.price) }}</td>
+                      <td>{{ "{:,}".format(row.position.long_quantity) }}</td>
+                      <td>{{ "{:,.1f}".format(row.position.long_average_price) }}</td>
+                      <td>{{ "{:,}".format(row.position.short_quantity) }}</td>
+                      <td>{{ "{:,.1f}".format(row.position.short_average_price) }}</td>
+                      <td>
+                        {% if row.realized_pnl is none %}
+                          -
+                        {% else %}
+                          <span class="pnl {% if row.realized_pnl > 0 %}pnl-positive{% elif row.realized_pnl < 0 %}pnl-negative{% else %}pnl-zero{% endif %}">
+                            {{ "{:+,.0f}円".format(row.realized_pnl) }}
+                          </span>
+                        {% endif %}
+                      </td>
+                    </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </form>
           </div>
         </section>
       {% endif %}
@@ -136,9 +215,17 @@
         return value.replace(/\|/g, "\\|").replace(/\s+/g, " ").trim();
       }
 
+      function cellMarkdownText(cell) {
+        const input = cell.querySelector("input");
+        if (input) {
+          return input.value;
+        }
+        return cell.textContent;
+      }
+
       function tableToMarkdown(table) {
         const rows = Array.from(table.querySelectorAll("tr")).map((row) =>
-          Array.from(row.children).map((cell) => escapeMarkdownCell(cell.textContent))
+          Array.from(row.children).map((cell) => escapeMarkdownCell(cellMarkdownText(cell)))
         );
         if (rows.length === 0) {
           return "";
