@@ -1,0 +1,197 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>楽天証券 約定タイミング可視化</title>
+    <link rel="stylesheet" href="/static/styles.css">
+  </head>
+  <body>
+    <main class="shell">
+      <header class="topbar">
+        <div>
+          <h1>楽天証券 約定タイミング可視化</h1>
+          <p>注文CSVと1分足を重ねて、信用売買の入退出を見直します。</p>
+        </div>
+      </header>
+
+      <section class="panel">
+        <form action="/visualize" method="post" enctype="multipart/form-data" class="upload-form">
+          <label class="field">
+            <span>楽天注文CSV</span>
+            <input type="file" name="orders_csv" accept=".csv" required>
+          </label>
+
+          <fieldset class="field radios">
+            <legend>1分足データ</legend>
+            <label>
+              <input type="radio" name="bar_source" value="yahoo" {% if bar_source != "csv" %}checked{% endif %}>
+              Yahoo Financeから取得
+            </label>
+            <label>
+              <input type="radio" name="bar_source" value="csv" {% if bar_source == "csv" %}checked{% endif %}>
+              1分足CSVをアップロード
+            </label>
+          </fieldset>
+
+          <label class="field">
+            <span>1分足CSV</span>
+            <input type="file" name="minute_csv" accept=".csv">
+          </label>
+
+          <button type="submit">表示する</button>
+        </form>
+      </section>
+
+      {% if errors %}
+        <section class="message error">
+          {% for error in errors %}
+            <p>{{ error }}</p>
+          {% endfor %}
+        </section>
+      {% endif %}
+
+      {% if warnings %}
+        <section class="message warning">
+          {% for warning in warnings %}
+            <p>{{ warning }}</p>
+          {% endfor %}
+        </section>
+      {% endif %}
+
+      {% if ticker or target_date or symbol_name %}
+        <section class="summary">
+          <div>
+            <span>銘柄</span>
+            <strong>{{ symbol_name or "-" }}</strong>
+          </div>
+          <div>
+            <span>Yahoo ticker</span>
+            <strong>{{ ticker or "-" }}</strong>
+          </div>
+          <div>
+            <span>対象日</span>
+            <strong>{{ target_date or "-" }}</strong>
+          </div>
+          <div>
+            <span>1分足</span>
+            <strong>{{ bars_count or 0 }}本</strong>
+          </div>
+        </section>
+      {% endif %}
+
+      {% if chart_html %}
+        <section class="chart">
+          {{ chart_html | safe }}
+        </section>
+      {% endif %}
+
+      {% if execution_rows %}
+        <section class="panel">
+          <div class="section-heading">
+            <h2>約定一覧</h2>
+            <button type="button" class="secondary-button" data-copy-markdown="#executions-table">
+              Markdownでコピー
+            </button>
+          </div>
+          <div class="table-wrap">
+            <table id="executions-table">
+              <thead>
+                <tr>
+                  <th>時刻</th>
+                  <th>注文番号</th>
+                  <th>取引</th>
+                  <th>売買</th>
+                  <th>数量</th>
+                  <th>約定単価</th>
+                  <th>損益</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for row in execution_rows %}
+                  {% set execution = row.execution %}
+                  <tr>
+                    <td>{{ execution.executed_at.strftime("%H:%M:%S") }}</td>
+                    <td>{{ execution.order_id }}</td>
+                    <td>{{ execution.trade_type }}</td>
+                    <td><span class="side side-{{ execution.side }}">{{ execution.side }}</span></td>
+                    <td>{{ "{:,}".format(execution.quantity) }}</td>
+                    <td>{{ "{:,.1f}".format(execution.price) }}</td>
+                    <td>
+                      {% if row.realized_pnl is none %}
+                        -
+                      {% else %}
+                        <span class="pnl {% if row.realized_pnl > 0 %}pnl-positive{% elif row.realized_pnl < 0 %}pnl-negative{% else %}pnl-zero{% endif %}">
+                          {{ "{:+,.0f}円".format(row.realized_pnl) }}
+                        </span>
+                      {% endif %}
+                    </td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      {% endif %}
+    </main>
+    <script>
+      function escapeMarkdownCell(value) {
+        return value.replace(/\|/g, "\\|").replace(/\s+/g, " ").trim();
+      }
+
+      function tableToMarkdown(table) {
+        const rows = Array.from(table.querySelectorAll("tr")).map((row) =>
+          Array.from(row.children).map((cell) => escapeMarkdownCell(cell.textContent))
+        );
+        if (rows.length === 0) {
+          return "";
+        }
+
+        const header = rows[0];
+        const separator = header.map(() => "---");
+        const body = rows.slice(1);
+        return [header, separator, ...body]
+          .map((row) => `| ${row.join(" | ")} |`)
+          .join("\n");
+      }
+
+      async function copyText(text) {
+        if (navigator.clipboard && window.isSecureContext) {
+          await navigator.clipboard.writeText(text);
+          return;
+        }
+
+        const textArea = document.createElement("textarea");
+        textArea.value = text;
+        textArea.setAttribute("readonly", "");
+        textArea.style.position = "fixed";
+        textArea.style.left = "-9999px";
+        document.body.appendChild(textArea);
+        textArea.select();
+        document.execCommand("copy");
+        textArea.remove();
+      }
+
+      document.querySelectorAll("[data-copy-markdown]").forEach((button) => {
+        button.addEventListener("click", async () => {
+          const table = document.querySelector(button.dataset.copyMarkdown);
+          if (!table) {
+            return;
+          }
+
+          const originalText = button.textContent;
+          try {
+            await copyText(tableToMarkdown(table));
+            button.textContent = "コピーしました";
+          } catch {
+            button.textContent = "コピー失敗";
+          } finally {
+            setTimeout(() => {
+              button.textContent = originalText;
+            }, 1600);
+          }
+        });
+      });
+    </script>
+  </body>
+</html>
